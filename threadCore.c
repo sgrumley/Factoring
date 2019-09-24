@@ -35,22 +35,23 @@ struct args {
 };
 
 // each thread runs this routine
-void *worker(void *data)  // tn is the thread number (0,1,...)
-{  int work = 0;  // amount of work done by this thread
+void *worker(void *data)  
+{  int work = 0;
    int threadId = ((struct args*)data)-> tid;
    int threadInput = ((struct args*)data)-> input;
    //printf("id:%d, input:%d\n", threadId, threadInput);
    work =  trialDivision(threadInput);
    sleep(1);
+   free(data);
     return work;
    //return 1;
 }
 
 int main(){  
-    int nprimes;
     int work;
     int n = 12345;
     int nthreads = 32;
+    
 
    // get threads started
     int f;
@@ -59,44 +60,23 @@ int main(){
         struct args *factor = (struct args *)malloc(sizeof(struct args));
         factor->tid = i;
         factor->input = f;
-      // this call says create a thread, record its ID in the array
-      // id, and get the thread started executing the function worker(), 
-      // passing the argument i to that function
+        printf( "input: %d, tid: %d\n",factor->input,  factor->tid);
         pthread_create(&id[i],NULL,worker,(void *)factor);
-        free(factor);
-        printf("thread id created: %d, i:%d\n ", id[i],i);
+        //printf("thread id created: %d, i:%d\n ", id[i],i);
    }
    
    // wait for all done
    int numFactors = 0;
    for (int i = 0; i < nthreads; i++)  {
-       //if ()
+       /*
+       if (pthread_join(id[i],&work)){
+           printf("ERROR");
+       }
+       */
       pthread_join(id[i],&work);
       printf("work: %d, id:%d, number passed:%d\n", work, id[i], i );
       numFactors += work;
    }
    printf("%d values of base done\n",numFactors);
-   
-   
-   // report results
-   nprimes = 1;
-   int t=0;
-   /* 
-   for (int i = 3; i <= n; i++){
-        nprimes++;
-   }
-      //if (prime[i])  {
-         
-     
-
-      
-      for (i = 3; i <= n; i++)
-      if (prime[i])  {
-         nprimes++;
-      }
-      */
-      
-   printf("the number of primes found was %d\n",nprimes);
    return 0;
-   
 }
