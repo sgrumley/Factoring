@@ -28,17 +28,17 @@ int trialDivision(int n){
 int main(){ 
     //Spawn 32 threads
     int nThreads = 32;
-    int input = 167284;
+    int input = 12345;
     int f, c;
+    int count = 0;
     for (int i = 0; i < nThreads; i++){
         f =  rightRotate(input, i);
         c =  trialDivision(f);
         printf("Right Rotation of %d by %d is ", input, i); 
-        printf("%d which has %d factors\n", f, c);        
+        printf("%d which has %d factors\n", f, c);  
+        count += c;      
     }
-
-    
-
+    printf("count: %d", count);
 }  
 
 

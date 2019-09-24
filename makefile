@@ -1,17 +1,17 @@
 build:
 	cc corefunc.c -o core
-	./core.exe
+	./core
 
 
 test: 
 	gcc -g -o facthread factors.c -lpthread -lm
-	./facthread.exe
+	./facthread
 
 debug:
 	gcc -g -o facthreadbug factors.c -lpthread -lm
-	gdb facthreadbug.exe
+	gdb facthreadbug
 
-tbug:
-	gcc -g -o fre OGfactors.c -lpthread -lm
-	./fre.exe 100 4
+tcore:
+	gcc -g -o fre threadCore.c -lpthread -lm
+	./fre
 
