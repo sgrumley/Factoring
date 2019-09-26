@@ -20,97 +20,127 @@
 #include  <sys/shm.h>
 
 #include  "shm-02.h"
+#define SLOT_SIZE 10
 
-void  main(int  argc, char *argv[])
-{
-     key_t          cfKEY;
-     int            cfID;
-     int            *cfPTR;
-     int *cf;
+void  main(){
 
-     //key_t          sfKEY;
-     //int            sfID;
-     //int            sf[10];
-     //int            *sfPTR;
-     //key_t          numKEY;
-     //int            numID;
-     //int            *numPTR;
+     key_t     cfKEY;
+     int       cfID;
+     int       *cfPTR;
+
+     key_t     sfKEY;
+     int       sfID;
+     int       sf[SLOT_SIZE];
+     int       *sfPTR;
+     int       *sfITER;
+
+     key_t     numKEY;
+     int       numID;
+     int       *numPTR;
+
+     key_t     slotKEY;
+     int       slotID;
+     int       slot[SLOT_SIZE];
+     int       *slotPTR;
      
 
      // create memory and set metadata for client flag
-     cfKEY = ftok(".", 'x');
-     printf("%d\n", cfKEY);
-     cfID = shmget(cfKEY, sizeof(int), IPC_CREAT |0666);
+     cfKEY     =    ftok("shmfile", 'x');
+     cfID      =    shmget(cfKEY, sizeof(int), IPC_CREAT |0666);
      if (cfID < 0) {
           printf("*** shmget error (cf) ***\n");
           exit(1);
      }
-     // attaching to shared memory -> schmat (id, address, shmflg )
-     cfPTR = (int *) shmat(cfID, (void*)0, 0);
+     cfPTR     =    (int *) shmat(cfID, (void*)0, 0);
      if ((int) cfPTR == -1) {
           printf("*** shmat error (cf) ***\n");
           exit(1);
      }
-     cf = cfPTR;
-     *cf = 2;
-     printf("%d\n",cfPTR);
-     //cfPTR = 12;
-     printf("%d\n", cfID);
-     printf("%d\n",cfPTR);
-    
-     sleep(10);
-     printf("cfptr %d\n",cfPTR);
-     printf("cfptr* %d\n",*cfPTR);
-     shmdt(cfPTR);
-     shmctl(cfID,IPC_RMID,NULL); 
-    
-     exit(1);
-     int save;
-/*
+     
      // create memory and set metadata for num
-     numKEY = ftok("shmfile1", 'c');
-     numID = shmget(numKEY, sizeof(int), IPC_CREAT | 0666);
+     numKEY    =    ftok("shmfile1", 'c');
+     numID     =    shmget(numKEY, sizeof(int), IPC_CREAT | 0666);
      if (numID < 0) {
           printf("*** shmget error (num) ***\n");
           exit(1);
      }
-     
-     numPTR = (int *) shmat(numID, NULL, 0);
+     numPTR    =    (int *) shmat(numID, NULL, 0);
      if ((int) numPTR == -1) {
           printf("*** shmat error (num) ***\n");
           exit(1);
      }
 
      // create memory and set metadata for sf
-     sfKEY = ftok("shmfile2", 'v');
-     sfID = shmget(sfKEY, sizeof(int)*10, IPC_CREAT | 0666);
+     sfKEY     =    ftok("shmfile2", 'v');
+     sfID      =    shmget(sfKEY, sizeof(int) * SLOT_SIZE, IPC_CREAT | 0666);
      if (sfID < 0) {
           printf("*** shmget error (sf) ***\n");
           exit(1);
      }
      // attaching to shared memory -> schmat (id, address, shmflg )
-     sfPTR = (int *) shmat(sfID, NULL, 0);
+     sfPTR     =    (int *) shmat(sfID, NULL, 0);
      if ((int) sfPTR == -1) {
           printf("*** shmat error (sf) ***\n");
           exit(1);
      }
+
+     // define meta data around server shared memory slot
+     slotKEY   =    ftok(".", 'b');
+     slotID = shmget(slotKEY, sizeof(int) * SLOT_SIZE, IPC_CREAT | 0666);
+     if (slotID < 0) {
+          printf("*** shmget error (sf) ***\n");
+          exit(1);
+     }     
+     slotPTR   =    (int *) shmat(slotID, NULL, 0);
+     if ((int) slotPTR == -1) {
+          printf("*** shmat error (sf) ***\n");
+          exit(1);
+     }
+
+     // initialise shared values
+     int save;
+     *cfPTR = 0;
+     sfITER = sfPTR;
+     for (int i = 0; i < SLOT_SIZE; i++){
+          *sfITER = 0;
+          printf("sserver client %d: %d %d\n", i, *sfITER, sfITER);
+          sfITER++;
+     }
      
-     
-     
+
+     //set server flags to 0
      while (1){
-          
-         if (cfPTR == 1){
-              //printf("%d\n",cfPTR);
-              printf("found data\n");
-              save = numPTR;
-              if (save == 0){
+          // if client has a request 
+          if (*cfPTR == 1){
+               // check if client quit (may not need)
+               if (*numPTR == 0){
                    printf("this break\n");
-                   cfPTR = 0;
+                   *cfPTR = 0;
                    break;
-              }
-             printf("getting factors of -%i-\n", save);
-             cfPTR = 0;
-             
+               }
+               // check if server has free slots via server flag
+               sfITER = sfPTR;
+               int freeSlot = -1;
+               for (int i = 0; i < SLOT_SIZE; i++){
+                    if (*sfITER == 0){
+                         sfITER = 1;
+                         freeSlot = i;
+                         break;
+                    }
+                    sfITER++;
+               }
+
+               if (freeSlot != -1){
+                    // read from num
+                    save = *numPTR;
+                    // call factoring function 
+                    printf("getting factors of -%i-\n", save);
+                    // replace num with index
+                    *numPTR = freeSlot;
+                    // set client flag back to ready to take
+                    *cfPTR = 0;
+               }           
+             //*cfPTR = 0;
          }
      }
      printf("we founnd it %i",save);
@@ -128,5 +158,5 @@ void  main(int  argc, char *argv[])
      printf("   Client has detached its shared memory...\n");
      printf("   Client exits...\n");
      exit(0);            
-     */
+     
 }
