@@ -34,6 +34,8 @@ void  main(void)
           printf("*** shmat error (client) ***\n");
           exit(1);
      }
+     printf("%d\n", ShmPTR->status);
+     printf("%d\n",ShmID);
 
      printf("   Client has attached the shared memory...\n");
     int readIn;

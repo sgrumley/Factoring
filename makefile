@@ -15,12 +15,20 @@ tcore:
 	gcc -g -o fre.out threadCore.c -lpthread -lm
 	./fre.out
 
+client:
+	gcc -g -o client.out client.c
+	./client.out 88 99 66 55
+
+
+server:
+	gcc -g -o server.out server.c
+	./server.out 22 33 44 55
+	
 cli:
-	gcc -g -o cli.out client.c
-	./cli.out 88 99 66 55
+	gcc -g -o cli.out cli.c
+	./cli.out
 
 
 serv:
-	gcc -g -o serv.out server.c
-	./serv.out 22 33 44 55
-	
+	gcc -g -o serv.out serv.c
+	./serv.out

@@ -45,6 +45,8 @@ void  main(int  argc, char *argv[])
      printf("Server has attached the shared memory...\n");
      ShmPTR->status = TAKEN;
      int save;
+     printf("%d\n", ShmPTR->status);
+     printf("%d\n",ShmID);
      
      while (1){
          if (ShmPTR->status == FILLED){

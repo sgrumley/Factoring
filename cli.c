@@ -17,53 +17,104 @@
 
 void  main(void)
 {
-     key_t          ShmKEY;
-     int            ShmID;
-     struct Memory  *ShmPTR;
-     
-     ShmKEY = ftok(".", 'x');
-     ShmID = shmget(ShmKEY, sizeof(struct Memory), 0666);
-     if (ShmID < 0) {
-          printf("*** shmget error (client) ***\n");
-          exit(1);
-     }
-     printf("   Client has received a shared memory of four integers...\n");
-     
-     ShmPTR = (struct Memory *) shmat(ShmID, NULL, 0);
-     if ((int) ShmPTR == -1) {
-          printf("*** shmat error (client) ***\n");
-          exit(1);
-     }
+     key_t          cfKEY;
+     int            cfID;
+     int            *cfPTR;
+     int *cf;
 
-     printf("   Client has attached the shared memory...\n");
+     //key_t          sfKEY;
+     //int            sfID;
+     //int            sf[10];
+     //int            *sfPTR;
+     //key_t          numKEY;
+     //int            numID;
+     //int            *numPTR;
+     
+     
+     
+     // define meta data around clientflag shared memory slot
+     cfKEY = ftok(".", 'x');
+     printf("%d\n", cfKEY);
+     cfID = shmget(cfKEY, sizeof(int), 0666);
+     if (cfID < 0) {
+          printf("*** shmget error (cf) ***\n");
+          exit(1);
+     }     
+     cfPTR = (int*) shmat(cfID, (void*)0, 0);
+     if ((int) cfPTR == -1) {
+          printf("*** shmat error (cf) ***\n");
+          exit(1);
+     }
+     cf = cfPTR;
+     printf("print cfstar%d\n",*cf);
+     
+     printf("cid%d\n", cfID);
+     printf("cfptr %d\n", cfPTR);
+     printf("   Cfptrstar: %d\n",*cfPTR);
+     *cf = 11;
     int readIn;
+    shmdt(cfPTR);
+     
+    exit(1);
+     /*
+     // define meta data around number share memory slot
+     numKEY = ftok("shmfile1", 'c');
+     numID = shmget(numKEY, sizeof(int), 0666);
+     if (numID < 0) {
+          printf("*** shmget error (num) ***\n");
+          exit(1);
+     }     
+     numPTR = (int *) shmat(numID, NULL, 0);
+     if ((int) numPTR == -1) {
+          printf("*** shmat error (num) ***\n");
+          exit(1);
+     }
+     // define meta data around server flags shared memory slot
+     sfKEY = ftok("shmfile2", 'v');
+     //printf("Tester %d", sizeof(sf));
+     sfID = shmget(sfKEY, sizeof(int) *10, 0666);
+     if (sfID < 0) {
+          printf("*** shmget error (sf) ***\n");
+          exit(1);
+     }     
+     sfPTR = (int *) shmat(sfID, NULL, 0);
+     if ((int) sfPTR == -1) {
+          printf("*** shmat error (sf) ***\n");
+          exit(1);
+     }
+     
+
+     //cfPTR = 0;
+     
+    
     while (1){
-        if (ShmPTR->status  == TAKEN){
-            ShmPTR->status  = NOT_READY;
+        if (cfPTR == 0){
+             //check if there is an available slot
+            //cfPTR  = 1;
             printf("Input a number: ");
             scanf("%d", &readIn);
-            printf("here\n");
             if (readIn == 0){
                 //break;
             }
-            ShmPTR->data[0] = readIn;
-            ShmPTR->status = FILLED;          
+            numPTR = readIn;
+            cfPTR = 1;          
          }
 
      }
-    ShmPTR->status  = NOT_READY;
-    
-    //printf("Client has filled %d %d %d %d to shared memory...\n",ShmPTR->data[0], ShmPTR->data[1], ShmPTR->data[2], ShmPTR->data[3]);
     
 
-    while (ShmPTR->status != TAKEN)
+    while (cfPTR != 0)
           sleep(1);
-          
-     printf("Server has detected the completion of its child...\n");
-     shmdt((void *) ShmPTR); // detach memory from program
+
+     shmdt((void *) cfPTR); // detach memory from program
+     shmdt((void *) numPTR);
+     shmdt((void *) sfPTR);
      printf("Server has detached its shared memory...\n");
-     shmctl(ShmID, IPC_RMID, NULL); // destroy memory
+     shmctl(cfID, IPC_RMID, NULL); // destroy memory
+     shmctl(numID, IPC_RMID, NULL); 
+     shmctl(sfID, IPC_RMID, NULL); 
      printf("Server has removed its shared memory...\n");
      printf("Server exits...\n");
      exit(0);
+     */
 }
