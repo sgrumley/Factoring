@@ -18,9 +18,99 @@
 #include  <sys/types.h>
 #include  <sys/ipc.h>
 #include  <sys/shm.h>
+#include <math.h>
+#include <pthread.h>
 
 #include  "shm-02.h"
-#define SLOT_SIZE 10
+
+// ID structs for the threads
+pthread_t id[MAX_THREADS];
+
+struct args {
+    int tid;
+    int input;
+    int slot;
+};
+
+
+int rightRotate(int n, unsigned int d){ 
+   /* In n>>d, first d bits are 0. To put last 3 bits of at  
+     first, do bitwise or of n>>d with n <<(INT_BITS - d) */
+   return (n >> d)|(n << (INT_BITS - d)); 
+} 
+
+int trialDivision(int n){
+    int f = 1;
+    int ctr = 0;
+    while(n >= f){
+        if (n % f == 0){
+            ctr++;
+            // move data to shared memory slot
+            printf("f: %d\n", f);
+        } 
+        f++;
+    }
+    return ctr;
+}
+
+// each thread runs this routine
+void *worker(void *data)  
+{  int work = 0;
+   int threadId = ((struct args*)data)-> tid;
+   int threadInput = ((struct args*)data)-> input;
+   //printf("id:%d, input:%d\n", threadId, threadInput);
+   // push factors to slot memory
+   work =  trialDivision(threadInput);
+   sleep(1);
+   free(data);
+    return work;
+   //return 1;
+}
+
+int factors(int n, int q){
+    int work;
+    //int n = 12345;
+    int nthreads = 32;
+    
+
+   // get threads started
+    int f;
+    for (int i = 0; i < nthreads; i++)  {
+        f =  rightRotate(n, i);
+        struct args *factor = (struct args *)malloc(sizeof(struct args));
+        factor->tid = i;
+        factor->input = f;
+        factor->slot = q;
+        //printf( "input: %d, tid: %d\n",factor->input,  factor->tid);
+        pthread_create(&id[i],NULL,worker,(void *)factor);
+        //printf("thread id created: %d, i:%d\n ", id[i],i);
+   }
+   
+   // wait for all done
+   int numFactors = 0, progress = 0;
+   int progressPercent;
+   for (int i = 0; i < nthreads; i++)  {
+       /*
+       if (pthread_join(id[i],&work)){
+           printf("ERROR");
+       }
+       */
+      pthread_join(id[i],&work);
+      //printf("work: %d, id:%d, number passed:%d\n", work, id[i], i );
+      numFactors += work;
+      progress++;
+      // add progress variable to slotprogress shared memory
+      progressPercent = (100 / nthreads) * progress;
+      printf("Query -> %d -> %c%d\n", q,'%', progressPercent);
+     // use as progress report i/32
+   }
+   // set slot value to finished
+   // *slotPTR = QUERY_FIN
+
+   printf("%d values of base done\n",numFactors);
+   return 0;
+}
+
 
 void  main(){
 
@@ -42,6 +132,7 @@ void  main(){
      int       slotID;
      int       slot[SLOT_SIZE];
      int       *slotPTR;
+     int       *slotITER;
      
 
      // create memory and set metadata for client flag
@@ -52,7 +143,7 @@ void  main(){
           exit(1);
      }
      cfPTR     =    (int *) shmat(cfID, (void*)0, 0);
-     if ((int) cfPTR == -1) {
+     if (*cfPTR == -1) {
           printf("*** shmat error (cf) ***\n");
           exit(1);
      }
@@ -65,7 +156,7 @@ void  main(){
           exit(1);
      }
      numPTR    =    (int *) shmat(numID, NULL, 0);
-     if ((int) numPTR == -1) {
+     if (*numPTR == -1) {
           printf("*** shmat error (num) ***\n");
           exit(1);
      }
@@ -79,7 +170,7 @@ void  main(){
      }
      // attaching to shared memory -> schmat (id, address, shmflg )
      sfPTR     =    (int *) shmat(sfID, NULL, 0);
-     if ((int) sfPTR == -1) {
+     if (*sfPTR == -1) {
           printf("*** shmat error (sf) ***\n");
           exit(1);
      }
@@ -92,7 +183,7 @@ void  main(){
           exit(1);
      }     
      slotPTR   =    (int *) shmat(slotID, NULL, 0);
-     if ((int) slotPTR == -1) {
+     if (*slotPTR == -1) {
           printf("*** shmat error (sf) ***\n");
           exit(1);
      }
@@ -100,30 +191,35 @@ void  main(){
      // initialise shared values
      int save;
      *cfPTR = 0;
+     *numPTR = 0;
      sfITER = sfPTR;
+     slotITER = slotPTR;
      for (int i = 0; i < SLOT_SIZE; i++){
           *sfITER = 0;
+          *slotITER = 0;
+
           printf("sserver client %d: %d %d\n", i, *sfITER, sfITER);
           sfITER++;
+          slotITER++;
      }
      
 
      //set server flags to 0
      while (1){
           // if client has a request 
-          if (*cfPTR == 1){
+          if (*cfPTR == FILLED){
                // check if client quit (may not need)
                if (*numPTR == 0){
                    printf("this break\n");
-                   *cfPTR = 0;
+                   *cfPTR = WAITING;
                    break;
                }
                // check if server has free slots via server flag
                sfITER = sfPTR;
                int freeSlot = -1;
                for (int i = 0; i < SLOT_SIZE; i++){
-                    if (*sfITER == 0){
-                         sfITER = 1;
+                    if (*sfITER == WAITING){
+                         *sfITER = FILLED;
                          freeSlot = i;
                          break;
                     }
@@ -138,14 +234,28 @@ void  main(){
                     // replace num with index
                     *numPTR = freeSlot;
                     // set client flag back to ready to take
-                    *cfPTR = 0;
+                    *cfPTR = TAKEN;
+                    // save number to slot
+                    *(slotPTR + freeSlot) = save;
+                    //call factors
+                    factors(save, freeSlot);
+                    //print slots
+                    sfITER = sfPTR;
+                    slotITER = slotPTR;
+                    printf("save %d to slot: %d\n", save, freeSlot);
+                    for (int i = 0; i < SLOT_SIZE; i++){
+                         printf("%d server flag : %d, Slot value: %d\n", i, *sfITER, *slotITER);
+                         sfITER++;
+                         slotITER++;
+                    }
+                    printf("\n------------------------------------\n");
                }           
              //*cfPTR = 0;
          }
      }
      printf("we founnd it %i",save);
      
-                
+      
 
      
      

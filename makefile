@@ -30,5 +30,5 @@ cli:
 
 
 serv:
-	gcc -g -o serv.out serv.c
+	gcc -g -o serv.out serv.c -lpthread -lm
 	./serv.out

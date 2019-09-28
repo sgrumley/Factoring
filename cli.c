@@ -14,7 +14,7 @@
 #include  <sys/shm.h>
 
 #include  "shm-02.h"
-#define SLOT_SIZE 10
+
 
 void  main(){
 
@@ -90,22 +90,68 @@ void  main(){
      }
 
      // logic
+     
+     struct Query {
+          int  id;
+	     int  numSent;
+          int  slotAllocated;
+	     int  numFactors;
+     };
+
      int readIn;
+     int numQueries = -1;
+     struct Query queries[50];
+     int currentQueries[SLOT_SIZE]; // init all =-1
+     
+     for (int i = 0; i<SLOT_SIZE;i++){
+          currentQueries[i] = -1;
+     }
     
      while (1){
-          if (*cfPTR == 0){
+          if (*cfPTR == WAITING){
                // get numPTR (slot reference) numPTR = 0 init / first slot willl be used
                printf("Input a number: ");
                scanf("%d", &readIn);
-            if (readIn == 0){
-               *numPTR = readIn;
-               *cfPTR = 1;
-               break;
-            }
-            *numPTR = readIn;
-            *cfPTR = 1;          
-         }
+               if (readIn == 0){
+                    *numPTR = readIn;
+                    *cfPTR = FILLED;
+                    break;
+               }
+               // make a record of queries from this client
+               numQueries++;
+               // set 
+               // make sure there are available queries
+               for (int x=0; x<SLOT_SIZE; x++){
+                    if (currentQueries[x] == -1){
+                         currentQueries[x] = numQueries;
+                    }
+               }
 
+               queries[numQueries].numSent = readIn;
+               queries[numQueries].numFactors = 0;
+               // pass query values into shared memory
+               *numPTR = readIn;
+               *cfPTR = FILLED;         
+         } 
+         // Once the data has been taken open up the client flag for other requests
+         if (*cfPTR == TAKEN){
+              // numptr = the slot that the query is in
+               queries[numQueries].slotAllocated = *numPTR;
+               *cfPTR = WAITING;
+               printf("numSent: %d, slotAllocated: %d, numFactors: %d\n",queries[numQueries].numSent, queries[numQueries].slotAllocated, queries[numQueries].numFactors ); 
+         }
+          // for each slot avaible to query ids is it ready?
+          for (int i = 0; i < SLOT_SIZE; i++){
+               int ind = queries[currentQueries[i]].slotAllocated;
+               // if the query slot is filled 
+               if ( sfPTR + ind == FILLED){
+                    // grab data
+                    int result = *(slotPTR + ind);
+               } else if (sfPTR + ind == QUERY_FIN){
+                    // the query is complete 
+                    // remove from current queue
+               }
+          }
      }
 
      shmdt((void *) cfPTR); // detach memory from program

@@ -19,6 +19,7 @@ int trialDivision(int n){
     while(n >= f){
         if (n % f == 0){
             ctr++;
+            printf("factor: %d\n", f);
         } 
         f++;
     }
@@ -39,17 +40,18 @@ void *worker(void *data)
 {  int work = 0;
    int threadId = ((struct args*)data)-> tid;
    int threadInput = ((struct args*)data)-> input;
-   //printf("id:%d, input:%d\n", threadId, threadInput);
+   printf("id:%d, input:%d\n", threadId, threadInput);
    work =  trialDivision(threadInput);
+   //printf("factor: \n");
    sleep(1);
    free(data);
     return work;
    //return 1;
 }
 
-int main(){  
+int factors(int n){
     int work;
-    int n = 12345;
+    //int n = 12345;
     int nthreads = 32;
     
 
@@ -60,7 +62,8 @@ int main(){
         struct args *factor = (struct args *)malloc(sizeof(struct args));
         factor->tid = i;
         factor->input = f;
-        printf( "input: %d, tid: %d\n",factor->input,  factor->tid);
+        //factor->slot = q;
+        //printf( "input: %d, tid: %d\n",factor->input,  factor->tid);
         pthread_create(&id[i],NULL,worker,(void *)factor);
         //printf("thread id created: %d, i:%d\n ", id[i],i);
    }
@@ -78,5 +81,10 @@ int main(){
       numFactors += work;
    }
    printf("%d values of base done\n",numFactors);
+}
+
+int main(){  
+    int te = 69;
+    factors(te);
    return 0;
 }
