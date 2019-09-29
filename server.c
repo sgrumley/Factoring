@@ -1,77 +1,83 @@
-/* ----------------------------------------------------------------- */
-/* PROGRAM  server.c                                                 */
-/*    This program serves as the server similar to the one in shm.c. */
-/* The difference is that the client is no more a child process.     */
-/* Thus, some mechanism must be established between the server and   */
-/* the client.  This program uses a naive one.  The shared memory    */
-/* has an indicator whose possible values are NOT_READY, FILLED and  */
-/* TAKEN.  Before the server completes filling data, the status is   */
-/* NOT_READY, after filling data it is FILLED.  Then, the server just*/
-/* wait (busy waiting) until the status becomes TAKEN.               */
-/*    Note that the server must be started first.  The client can    */
-/* only be started as the server says so.  Otherwise, the client may */
-/* not be able to use the shared memory of the data therein.         */
-/* ----------------------------------------------------------------- */
-
-#include  <stdio.h>
-#include  <stdlib.h>
-#include  <sys/types.h>
-#include  <sys/ipc.h>
-#include  <sys/shm.h>
-
-#include  "shm-02.h"
-
-void  main(int  argc, char *argv[])
+#include <sys/shm.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <semaphore.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <fcntl.h> 
+int main()
 {
-     key_t          ShmKEY;
-     int            ShmID;
-     struct Memory  *ShmPTR;
-     
-     
-     
-     ShmKEY = ftok(".", 'x');
-     ShmID = shmget(ShmKEY, sizeof(struct Memory), IPC_CREAT | 0666);
-     if (ShmID < 0) {
-          printf("*** shmget error (server) ***\n");
-          exit(1);
-     }
-     printf("Server has received a shared memory of four integers...\n");
-     // attaching to shared memory -> schmat (id, address, shmflg )
-     ShmPTR = (struct Memory *) shmat(ShmID, NULL, 0);
-     if ((int) ShmPTR == -1) {
-          printf("*** shmat error (server) ***\n");
-          exit(1);
-     }
-     printf("Server has attached the shared memory...\n");
-     ShmPTR->status = TAKEN;
-     int save;
-     printf("%d\n", ShmPTR->status);
-     printf("%d\n",ShmID);
-     
-     while (1){
-         if (ShmPTR->status == FILLED){
-              save = ShmPTR->data[0];
-              if (save == 0){
-                   printf("this break\n");
-                   ShmPTR->status = TAKEN;
-                   break;
-              }
-             printf("getting factors of -%i-\n", save);
-             ShmPTR->status = TAKEN;
-             
-         }
-     }
-     printf("we founnd it %i",save);
-                
+    
+const char *name    = "shared_memory";
+const char *name2   = "shared_results";
+const char *sema1   = "tSlot";
+const char *sema2   = "aSlot";
+const char *sema3   = "mutex";
+const char *sema4   = "resMUT";
+int shm_fd; //shared memory file discriptor
+int shm_res;
+int *shelf;
+int *res;
+int loop=4;
+sem_t *tSlot, *aSlot, *mutex;
+sem_t *resMUT;
+/* make *shelf shared between processes */
+//create the shared memory segment
 
-     
-     
-     printf("Please start the client in another window...\n");
-      ShmPTR->status = TAKEN;
-     printf("   Client has informed server data have been taken...\n");
-     shmdt((void *) ShmPTR);
-     printf("   Client has detached its shared memory...\n");
-     printf("   Client exits...\n");
-     exit(0);            
-     
+shm_fd = shm_open(name, O_CREAT | O_RDWR, 0666);
+shm_res = shm_open(name2, O_CREAT | O_RDWR, 0666);
+//configure the size of the shared memory segment
+ftruncate(shm_fd,sizeof(int));
+ftruncate(shm_res,sizeof(int));
+
+//map the shared memory segment in process address space
+shelf   = mmap(0,sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+res     = mmap(0,sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED, shm_res, 0);
+/*creat/open semaphores*/
+//cook post semaphore tSlot after cooking a pizza
+tSlot = sem_open(sema1, O_CREAT,0666,0);
+aSlot = sem_open(sema2, O_CREAT, 0666, 2); 
+//mutex for mutual exclusion of shelf
+mutex = sem_open(sema3,O_CREAT,0666,1);
+resMUT = sem_open(sema4, O_CREAT, 0666, 1); 
+int t = -1;
+if (t == -1){
+int ctr=5;
+
+while(loop--){
+    sem_wait(tSlot);    
+    sem_wait(mutex);
+    printf("factorise: %d\n", *shelf);
+    sleep(2);
+    sem_post(mutex);
+    sem_post(aSlot);
+    sem_wait(resMUT);
+    printf("inti\n");
+    (*res) = ctr;
+    sem_post(resMUT);
+    ctr++;
+    
+
+
 }
+} //test
+/*close and unlink semaphores*/
+sem_close(tSlot);
+sem_close(aSlot);
+sem_close(mutex);
+sem_close(resMUT);
+sem_unlink(sema1);
+sem_unlink(sema2);
+sem_unlink(sema3);
+sem_unlink(sema4);
+/*close and unlink shared memory*/
+munmap(shelf, sizeof(int));
+munmap(res, sizeof(int));
+close(shm_fd);
+close(shm_res);
+shm_unlink(name);
+shm_unlink(name2);
+return 0;
+} 
+

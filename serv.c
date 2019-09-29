@@ -20,6 +20,15 @@
 #include  <sys/shm.h>
 #include <math.h>
 #include <pthread.h>
+#include <semaphore.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+
+#include <errno.h>
+
+#include <unistd.h>
+
+#include <sys/mman.h>
 
 #include  "shm-02.h"
 
@@ -32,12 +41,18 @@ struct args {
     int tid;
     int input;
     int sid;
+    int *slotPTR;
+    sem_t *slotSEM;
+    int *flagPTR;
 };
 
 // struct for arguments 
 struct arguments {
     int number;
     int slot;
+    int *slotPTR;
+    sem_t *slotSEM;
+    int *flagPTR;
 };
 
 
@@ -47,37 +62,42 @@ int rightRotate(int n, unsigned int d){
    return (n >> d)|(n << (INT_BITS - d)); 
 } 
 
-int trialDivision(int n){
+// each thread runs this routine
+void *factorisingInstance(void *data){   
+    int n = ((struct args*)data)-> input;
+    sem_t *sem = ((struct args*)data)-> slotSEM;
+    int *slotADDR = ((struct args*)data)-> slotPTR;
+    int *fp = ((struct args*)data)-> flagPTR;
+    // send integer to be factorised - returns the amount of factors found
     int f = 1;
     int ctr = 0;
     while(n >= f){
         if (n % f == 0){
             ctr++;
+            sem_wait(sem);
+               *slotADDR = f;
+               *fp = FILLED;
+            sem_post(sem);
             // move data to shared memory slot
             //printf("f: %d\n", f);
         } 
         f++;
     }
-    return ctr;
-}
-
-// each thread runs this routine
-void *factorisingInstance(void *data){   
-    int fctr = 0;
-    // send integer to be factorised - returns the amount of factors found
-    fctr =  trialDivision(((struct args*)data)-> input);
-    sleep(1);
     // free data
     free(data);
-    return fctr;
+    return ctr;
 }
 
 void *factorization(void *data){
     int fctr;
+    //printf("make it");
     
     int n = ((struct arguments*)data)-> number;
     int sl= ((struct arguments*)data)-> slot;
     printf("factor for %d in slot %d\n", n, sl);
+printf("%d - %d \n",*(((struct arguments*)data)-> slotPTR), *(((struct arguments*)data)-> slotSEM) );
+printf("broken %d %d\n", ((struct arguments*)data)-> flagPTR), *(((struct arguments*)data)-> flagPTR);
+    printf("%p - %p - %p\n",((struct arguments*)data)-> slotPTR, ((struct arguments*)data)-> slotSEM,((struct arguments*)data)-> flagPTR );
 
    // start 32 threads for each bit rotation on the number given
     int brr;
@@ -86,8 +106,10 @@ void *factorization(void *data){
         struct args *factor = (struct args *)malloc(sizeof(struct args));
         factor->tid = i;
         factor->input = brr;
-        factor->sid = sl;
-        //printf( "input: %d, tid: %d\n",factor->input,  factor->tid);
+        factor->sid = ((struct arguments*)data)-> slot;
+        factor->slotPTR = ((struct arguments*)data)-> slotPTR;
+        factor->slotSEM = ((struct arguments*)data)-> slotSEM;
+        factor->flagPTR = ((struct arguments*)data)-> flagPTR;
         pthread_create(&id[i],NULL,factorisingInstance,(void *)factor);
    }   
    // join all threads together and count total factors
@@ -100,9 +122,10 @@ void *factorization(void *data){
       // add progress variable to slotprogress shared memory
       progressPercent = (100 / NTHREADS) * progress;
       numFactors += fctr;
-      printf("Query -> %d -> %c%d\n", sl,'%', progressPercent);
+      //printf("Query -> %d -> %c%d\n", sl,'%', progressPercent);
    }
-   printf("%d factors of %d done\n",numFactors, n);
+   printf("%d factors of %d done for slot %d\n",numFactors, n, sl);
+   *((struct arguments*)data)-> flagPTR = QUERY_FIN;
    pthread_cancel(pthread_self());
 }
 
@@ -112,25 +135,41 @@ void *factorization(void *data){
 void  main(){
 
      key_t     cfKEY;
+     sem_t     *cfSEM;
      int       cfID;
      int       *cfPTR;
+     //const char *sema1 = "clientSEM";
+
 
      key_t     sfKEY;
+     sem_t     *sfSEM;
      int       sfID;
      int       sf[SLOT_SIZE];
      int       *sfPTR;
      int       *sfITER;
 
      key_t     numKEY;
+     sem_t     *numSEM;
      int       numID;
      int       *numPTR;
 
      key_t     slotKEY;
+     sem_t     *slotSEM;
      int       slotID;
      int       slot[SLOT_SIZE];
      int       *slotPTR;
      int       *slotITER;
-     
+
+     int       value;
+     /*
+     const char *sema1= "fill";
+     const char *sema2= "avail";
+     const char *sema3="mutex";
+     */
+    sem_unlink("numSEM");
+    sem_unlink("sfSEM");
+    sem_unlink("cfSEM");
+    sem_unlink("slotSEM");
 
      // create memory and set metadata for client flag
      cfKEY     =    ftok("shmfile", 'x');
@@ -143,7 +182,10 @@ void  main(){
      if (*cfPTR == -1) {
           printf("*** shmat error (cf) ***\n");
           exit(1);
-     }
+     }    
+     cfSEM = sem_open("cfSEM", O_CREAT, 0666, 1);
+     sem_getvalue(cfSEM, &value);
+     printf("cf init:%d\n", value);
      
      // create memory and set metadata for num
      numKEY    =    ftok("shmfile1", 'c');
@@ -157,6 +199,9 @@ void  main(){
           printf("*** shmat error (num) ***\n");
           exit(1);
      }
+     numSEM = sem_open("numSEM", O_CREAT, 0666, 1);
+     sem_getvalue(numSEM, &value);
+     printf("num init:%d\n", value);
 
      // create memory and set metadata for sf
      sfKEY     =    ftok("shmfile2", 'v');
@@ -171,6 +216,9 @@ void  main(){
           printf("*** shmat error (sf) ***\n");
           exit(1);
      }
+     sfSEM = sem_open ("sfSEM", O_CREAT, 0666, 1);
+     sem_getvalue(sfSEM, &value);
+     printf("sf init:%d\n", value);
 
      // define meta data around server shared memory slot
      slotKEY   =    ftok(".", 'b');
@@ -184,13 +232,19 @@ void  main(){
           printf("*** shmat error (sf) ***\n");
           exit(1);
      }
+     slotSEM = sem_open ("slotSEM", O_CREAT, 0666, 1);
+     sem_getvalue(slotSEM, &value);
+     printf("slot init:%d\n", value);
 
      // initialise shared values
      int input;
+     sem_wait(cfSEM);
      *cfPTR = 0;
-     *numPTR = 0;
+     sem_post(cfSEM);
+     //*numPTR = 0;
      sfITER = sfPTR;
      slotITER = slotPTR;
+     sem_wait(slotSEM);
      for (int i = 0; i < SLOT_SIZE; i++){
           *sfITER = 0;
           *slotITER = 0;
@@ -199,7 +253,7 @@ void  main(){
           sfITER++;
           slotITER++;
      }
-     
+     sem_post(slotSEM);
 
      //set server flags to 0
      while (1){
@@ -207,8 +261,9 @@ void  main(){
           if (*cfPTR == FILLED){
                // check if client quit (may not need)
                if (*numPTR == 0){
-                   printf("this break\n");
+                   sem_wait(cfSEM);
                    *cfPTR = WAITING;
+                   sem_post(cfSEM);
                    break;
                }
                // check if server has free slots via server flag
@@ -216,7 +271,10 @@ void  main(){
                int freeSlot = -1;
                for (int i = 0; i < SLOT_SIZE; i++){
                     if (*sfITER == WAITING){
+                         sem_wait(sfSEM);
+                         // potensially sfPTR + i = FILLED
                          *sfITER = FILLED;
+                         sem_post(sfSEM);
                          freeSlot = i;
                          break;
                     }
@@ -225,22 +283,29 @@ void  main(){
 
                if (freeSlot != -1){
                     // read from num
-                    input = *numPTR;
-                    // call factoring function 
-                    printf("getting factors of -%i-\n", input);
+                    sem_wait(cfSEM);
+                    input = *numPTR;                    
                     // replace num with index
                     *numPTR = freeSlot;
+                    printf("getting factors of -%i-\n", input);
                     // set client flag back to ready to take
                     *cfPTR = TAKEN;
                     // save number to slot
                     *(slotPTR + freeSlot) = input;
                     //call factors
+                     sem_post(cfSEM);
+                     int *he = sfPTR + freeSlot;
                     struct arguments *factorINIT = (struct arguments *)malloc(sizeof(struct arguments));
                     factorINIT->number = input;
                     factorINIT->slot = freeSlot;
+                    factorINIT->slotPTR = slotPTR + freeSlot;
+                    factorINIT->slotSEM = slotSEM;
+                    factorINIT->slotPTR = he;
+                    //printf("herherh %p", sfPTR + freeSlot);
                     printf( "thread started for input: %d on slot: %d\n",factorINIT->number,  factorINIT->slot);
                     pthread_create(&tid,NULL,factorization,(void *)factorINIT);
                     //print slots
+                    sem_wait(sfSEM);
                     sfITER = sfPTR;
                     slotITER = slotPTR;
                     printf("save %d to slot: %d\n", input, freeSlot);
@@ -249,20 +314,13 @@ void  main(){
                          sfITER++;
                          slotITER++;
                     }
+                    sem_post(sfSEM);
                     printf("\n------------------------------------\n");
                }           
-             //*cfPTR = 0;
          }
      }
      
-     
-      
-
-     
-     
-     printf("Please start the client in another window...\n");
-      //ShmPTR->status = TAKEN;
-     printf("   Client has informed server data have been taken...\n");
+     // end session
      shmdt((void *) cfPTR);
      shmdt((void *) numPTR);
      shmdt((void *) sfPTR);

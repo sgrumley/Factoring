@@ -12,6 +12,11 @@
 #include  <sys/types.h>
 #include  <sys/ipc.h>
 #include  <sys/shm.h>
+#include <math.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 
 #include  "shm-02.h"
 
@@ -19,22 +24,29 @@
 void  main(){
 
      key_t     cfKEY;
+     sem_t     *cfSEM;
      int       cfID;
      int       *cfPTR;
 
+
      key_t     sfKEY;
+     sem_t     *sfSEM;
      int       sfID;
      int       sf[SLOT_SIZE];
      int       *sfPTR;
+     int       *sfITER;
 
      key_t     numKEY;
+     sem_t     *numSEM;
      int       numID;
      int       *numPTR;
 
      key_t     slotKEY;
+     sem_t     *slotSEM;
      int       slotID;
      int       slot[SLOT_SIZE];
      int       *slotPTR;
+     int       *slotITER;
      
      
      // define meta data around clientflag shared memory slot
@@ -49,6 +61,7 @@ void  main(){
           printf("*** shmat error (cf) ***\n");
           exit(1);
      }
+     cfSEM = sem_open("cfSEM", 1);
     
      // define meta data around number share memory slot
      numKEY    =    ftok("shmfile1", 'c');
@@ -62,6 +75,7 @@ void  main(){
           printf("*** shmat error (num) ***\n");
           exit(1);
      }
+     numSEM = sem_open("numSEM", 1);   
 
      // define meta data around server flags shared memory slot
      sfKEY     =    ftok("shmfile2", 'v');
@@ -75,6 +89,7 @@ void  main(){
           printf("*** shmat error (sf) ***\n");
           exit(1);
      }
+     sfSEM = sem_open ("sfSEM", 1);
 
      // define meta data around server shared memory slot
      slotKEY   =    ftok(".", 'b');
@@ -88,6 +103,7 @@ void  main(){
           printf("*** shmat error (slot) ***\n");
           exit(1);
      }
+     slotSEM = sem_open ("slotSEM", 1);
 
      // logic
      
@@ -106,6 +122,7 @@ void  main(){
      for (int i = 0; i<SLOT_SIZE;i++){
           currentQueries[i] = -1;
      }
+     printf("bumf:%d\n", *numSEM);   
     
      while (1){
           if (*cfPTR == WAITING){
@@ -113,31 +130,40 @@ void  main(){
                printf("Input a number: ");
                scanf("%d", &readIn);
                if (readIn == 0){
+                    sem_wait(numSEM);
                     *numPTR = readIn;
+                    sem_post(numSEM);
+                    
+                    sem_wait(cfSEM);
                     *cfPTR = FILLED;
+                    sem_post(cfSEM);
                     break;
                }
                // make a record of queries from this client
                numQueries++;
-               // set 
                // make sure there are available queries
                for (int x=0; x<SLOT_SIZE; x++){
                     if (currentQueries[x] == -1){
                          currentQueries[x] = numQueries;
                     }
                }
-
                queries[numQueries].numSent = readIn;
                queries[numQueries].numFactors = 0;
                // pass query values into shared memory
-               *numPTR = readIn;
-               *cfPTR = FILLED;         
+               sem_wait(numSEM);
+               *numPTR = readIn; 
+               sem_post(numSEM);
+               sem_wait(cfSEM);
+               *cfPTR = FILLED;
+               sem_post(cfSEM);    
          } 
          // Once the data has been taken open up the client flag for other requests
          if (*cfPTR == TAKEN){
               // numptr = the slot that the query is in
                queries[numQueries].slotAllocated = *numPTR;
+               sem_wait(cfSEM);
                *cfPTR = WAITING;
+               sem_post(cfSEM);
                printf("numSent: %d, slotAllocated: %d, numFactors: %d\n",queries[numQueries].numSent, queries[numQueries].slotAllocated, queries[numQueries].numFactors ); 
          }
           // for each slot avaible to query ids is it ready?
@@ -148,6 +174,7 @@ void  main(){
                     // grab data
                     int result = *(slotPTR + ind);
                } else if (sfPTR + ind == QUERY_FIN){
+                    printf("q complete");
                     // the query is complete 
                     // remove from current queue
                }

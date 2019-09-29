@@ -1,71 +1,85 @@
-/* ----------------------------------------------------------------- */
-/* PROGRAM  client.c                                                 */
-/*    This is the client program.  It can only be started as the     */
-/* server says so.  The client requests the same shared memory the   */
-/* server established, attaches it to its own address space, takes   */
-/* the data, changes the status to TAKEN, detaches the shared memory,*/
-/* and exits.                                                        */
-/* ----------------------------------------------------------------- */
-
-#include  <stdio.h>
-#include  <stdlib.h>
-#include  <sys/types.h>
-#include  <sys/ipc.h>
-#include  <sys/shm.h>
-
-#include  "shm-02.h"
-
-void  main(void)
+/*waiter.c*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <sys/shm.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <semaphore.h>
+#include <errno.h>
+int main()
 {
-     key_t          ShmKEY;
-     int            ShmID;
-     struct Memory  *ShmPTR;
-     
-     ShmKEY = ftok(".", 'x');
-     ShmID = shmget(ShmKEY, sizeof(struct Memory), 0666);
-     if (ShmID < 0) {
-          printf("*** shmget error (client) ***\n");
-          exit(1);
-     }
-     printf("   Client has received a shared memory of four integers...\n");
-     
-     ShmPTR = (struct Memory *) shmat(ShmID, NULL, 0);
-     if ((int) ShmPTR == -1) {
-          printf("*** shmat error (client) ***\n");
-          exit(1);
-     }
-     printf("%d\n", ShmPTR->status);
-     printf("%d\n",ShmID);
+const char *name   = "shared_memory";
+const char *name2  = "shared_results";
+const char *sema1  = "tSlot";
+const char *sema2  = "aSlot";
+const char *sema3  = "mutex";
+const char *sema4  = "resMUT";
+int shm_fd; //file descriptor of
+int shm_res;
+int *shelf;
+int *res;
+int loop=4;
+sem_t *tSlot, *aSlot, *mutex;
+sem_t *resMUT;
 
-     printf("   Client has attached the shared memory...\n");
-    int readIn;
-    while (1){
-        if (ShmPTR->status  == TAKEN){
-            ShmPTR->status  = NOT_READY;
-            printf("Input a number: ");
-            scanf("%d", &readIn);
-            printf("here\n");
-            if (readIn == 0){
-                //break;
-            }
-            ShmPTR->data[0] = readIn;
-            ShmPTR->status = FILLED;          
-         }
 
-     }
-    ShmPTR->status  = NOT_READY;
-    
-    //printf("Client has filled %d %d %d %d to shared memory...\n",ShmPTR->data[0], ShmPTR->data[1], ShmPTR->data[2], ShmPTR->data[3]);
-    
+/* open the shared memory segment */
+shm_fd = shm_open(name, O_RDWR, 0666);
+shm_res = shm_open(name2, O_RDWR, 0666);
 
-    while (ShmPTR->status != TAKEN)
-          sleep(1);
+/* now map the shared memory segment in the address space of the
+process */
+shelf = mmap(0,sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED,shm_fd, 0);
+res = mmap(0,sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED,shm_res, 0);
+/*open semaphores*/
+tSlot = sem_open(sema1, O_CREAT,0666,0);
+aSlot = sem_open(sema2, O_CREAT, 0666, 2);
+mutex = sem_open(sema3,O_CREAT,0666,1);
+resMUT = sem_open(sema4,O_CREAT,0666,0);
+int t= -1;
+if (t == -1){
+
+
+int readIn;
+int chkSlots;
+while(loop--){
+     //chkSlots = sem_trywait(aSlot);
+     //chkResult = 
+
+     if (sem_trywait(aSlot) == 0){
+          printf("Input a number: ");
+          scanf("%d", &readIn);
+          sem_wait(mutex);
+          (*shelf) = readIn;          
+          sem_post(mutex);
+          sem_post(tSlot);
+          sem_wait(resMUT);
+          printf("recieved %d\n", (*res));
+          sem_post(resMUT);
           
-     printf("Server has detected the completion of its child...\n");
-     shmdt((void *) ShmPTR); // detach memory from program
-     printf("Server has detached its shared memory...\n");
-     shmctl(ShmID, IPC_RMID, NULL); // destroy memory
-     printf("Server has removed its shared memory...\n");
-     printf("Server exits...\n");
-     exit(0);
+     } else {
+          printf("server is busy\n");
+          sem_wait(aSlot);
+     }
+     
 }
+} // test
+/*remove semaphores*/
+sem_close(tSlot);
+sem_close(aSlot);
+sem_close(mutex);
+sem_close(resMUT);
+sem_unlink(sema1);
+sem_unlink(sema2);
+sem_unlink(sema3);
+sem_unlink(sema4);
+/*remove shared memory segment*/
+munmap(shelf, sizeof(int));
+munmap(res, sizeof(int));
+close(shm_fd);
+close(shm_res);
+shm_unlink(name);
+shm_unlink(name2);
+return 0;
+} 
