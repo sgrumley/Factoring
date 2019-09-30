@@ -58,7 +58,6 @@ void *factorisingInstance(void *data){
 
 // handles each server request on a new thread
 void *factorization(void *data){
-    printf("number: %d, slot: %p, sem: %p\n",((struct args*)data)-> number, ((struct args*)data)-> slotPTR, ((struct args*)data)-> slotSEM);
     int fctr;
     // localise variables
     int n = ((struct args*)data)-> number;
@@ -89,7 +88,7 @@ void *factorization(void *data){
    }
 
    free(data);
-   printf("%d factors of %d\n",numFactors, n);
+   printf("%d total factors of %d\n",numFactors, n);
    *((struct args*)data)-> slotPTR = 0;
    pthread_cancel(pthread_self());
 }
@@ -168,9 +167,6 @@ while(loop--){
         }
     }
 
-    for (int i=0; i<NUM_SLOT; i++){
-        printf("ya num %d\n", *(slot + i));
-    }
     // find slot  
     sem_wait(mutex);
     printf("factorise: %d\n", *shelf);
@@ -180,7 +176,6 @@ while(loop--){
     factor->number  = *(shelf); 
     factor->slotPTR = (slot + currentSlot);
     factor->slotSEM = slotMUT;
-    printf("number: %d, slot: %p, sem: %p\n",*(shelf), (slot + currentSlot), slotMUT);
     //factor->flagPTR = flagPTR;
     pthread_create(&tid,NULL,factorization,(void *)factor);
     sem_wait(resMUT);
