@@ -6,7 +6,96 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h> 
-#define NUM_SLOT 10
+#include <pthread.h>
+
+#define     NUM_SLOT 10
+#define 	NTHREADS 32
+
+// ID for threads
+pthread_t id[NTHREADS];
+pthread_t tid;
+
+// struct for args 
+struct args {
+    int number;
+    int *slotPTR;
+    int *flagPTR;
+    sem_t *slotSEM;
+};
+
+// right bit rotation
+int rightRotate(int n, unsigned int d){ 
+   return (n >> d)|(n << (NTHREADS - d)); 
+} 
+
+// handles each factorisation computation
+void *factorisingInstance(void *data){   
+    int f = 1;
+    int ctr = 0;    
+    // localise variables
+    int n = ((struct args*)data)-> number;
+    sem_t *sem = ((struct args*)data)-> slotSEM;
+    int *slotADDR = ((struct args*)data)-> slotPTR;
+    //int *fp = ((struct args*)data)-> flagPTR;
+    
+    while(n >= f){
+        if (n % f == 0){
+            ctr++;
+            //sem_wait(sem);
+            //*slotADDR = f;
+            //fp = FILLED;
+            //sem_post(sem);
+            // move data to shared memory slot
+            //printf("f: %d\n", f);
+        } 
+        f++;
+    }
+    // free data
+    free(data);
+    return ctr;
+}
+
+
+// handles each server request on a new thread
+void *factorization(void *data){
+    printf("number: %d, slot: %p, sem: %p\n",((struct args*)data)-> number, ((struct args*)data)-> slotPTR, ((struct args*)data)-> slotSEM);
+    int fctr;
+    // localise variables
+    int n = ((struct args*)data)-> number;
+    // start 32 threads for each bit rotation on the number given
+    int brr;
+    // create
+    for (int i = 0; i < NTHREADS; i++){
+        brr =  rightRotate(n, i);
+        struct args *factor = (struct args *)malloc(sizeof(struct args));
+        factor->number  = brr;
+        factor->slotPTR = ((struct args*)data)-> slotPTR;
+        factor->slotSEM = ((struct args*)data)-> slotSEM;
+        //factor->flagPTR = ((struct args*)data)-> flagPTR;
+        pthread_create(&id[i],NULL,factorisingInstance,(void *)factor);
+   }
+   int numFactors = 0, progress = 0;
+   int progressPercent;
+   for (int i = 0; i < NTHREADS; i++){
+        // join all threads together and count total factors
+        pthread_join(id[i],&fctr);
+        numFactors += fctr;
+        progress++;
+        // add progress variable to slotprogress shared memory
+        progressPercent = (100 / NTHREADS) * progress;
+        // write to shared memory slots progression[10]
+        // client can query timed
+        printf("Query -> %c%d\n",'%', progressPercent);
+   }
+
+   free(data);
+   printf("%d factors of %d\n",numFactors, n);
+   *((struct args*)data)-> slotPTR = 0;
+   pthread_cancel(pthread_self());
+}
+
+
+
 int main()
 {
     
@@ -78,11 +167,22 @@ while(loop--){
             currentSlot = -1;
         }
     }
+
+    for (int i=0; i<NUM_SLOT; i++){
+        printf("ya num %d\n", *(slot + i));
+    }
     // find slot  
     sem_wait(mutex);
     printf("factorise: %d\n", *shelf);
-    sleep(2);
-    printf("inti\n");
+    // call factorise function
+    // requires a pointer to the specific slot, number to factorise, and a pointer to progression slot
+    struct args *factor = (struct args *)malloc(sizeof(struct args));
+    factor->number  = *(shelf); 
+    factor->slotPTR = (slot + currentSlot);
+    factor->slotSEM = slotMUT;
+    printf("number: %d, slot: %p, sem: %p\n",*(shelf), (slot + currentSlot), slotMUT);
+    //factor->flagPTR = flagPTR;
+    pthread_create(&tid,NULL,factorization,(void *)factor);
     sem_wait(resMUT);
     (*res) = currentSlot;
     sem_post(resMUT); 
